@@ -15,19 +15,25 @@ def initial_map(ranges)
     add_map(lane, start, stop, dest)
   end
 
+  set_min_max_mapped(lane)
+
   @lanes["START-HERE"] = lane
 end
 
-def parse
-  @seeds = STDIN.readline
+def parse_seeds
+  # seeds: 79 14 55 13
+  seeds = STDIN.readline
                 .match(/seeds: (.*)/)
                 .captures
                 .first
                 .split
                 .map(&:to_i)
-  initial_map(@seeds)
+  initial_map(seeds)
 
   STDIN.readline
+end
+
+def parse_lanes
   STDIN.read.split("\n\n").each do |txt|
     # puts "-------------\n#{txt}"
     (label, lines) = txt.match(/(.*) map:\n(.*)/m).captures
@@ -40,8 +46,6 @@ def parse
             from_stuff: from_stuff,
             to_stuff: to_stuff,
             terminal_id: {}, # the ID of the thing (e.g. location) in the final state.
-            min_mapped: nil,
-            max_mapped: nil,
             maps: [],
           }
 
@@ -61,50 +65,71 @@ def parse
     end
 
     seed_missing_maps(lane)
-    @lanes[from_stuff] = map
+    @lanes[from_stuff] = lane
   end
 end
 
-# def next_steeeeeep(step, id)
-#   # puts "  next_steeeeeep(#{step}, #{id})"
-#   step[:maps].find do |maybe|
-#     # puts "    test #{maybe}"
-#     true if id.between?(maybe[:start], maybe[:stop])
-#   end #.tap { |x| puts "    Found next_steeeeeep: #{x}"}
-# end
+def parse
+  parse_seeds
+  parse_lanes
+end
+
+def sort_maps(lane)
+  lane[:maps].sort_by! { |m| m[:start] }
+end
 
 def seed_missing_maps(lane)
-  a = lane[:maps].map{|m| m[:start]}.min
-  b = lane[:maps].map{|m| m[:stop]}.max
-  range = (a..b)
+  set_min_max_mapped(lane)
+  range = (lane[:min_mapped]..lane[:max_mapped])
   add_missing_maps(lane, range)
 end
 
 # create a pass-through, zero-delta map:
+# caller must sort maps sometime later.
 def add_map(lane, start, stop, dest=start)
+    # puts "add_map(#{lane[:label]}}, #{start}, #{stop}, #{dest})"
+
     len = stop - start + 1
     delta = dest - start
 
-    new_map =
-      {
-        start: start, stop: stop, len: len, dest: dest, delta: delta,
-        terminal_id: {},
-        total_delta: nil,
-      }
+    new_map = {
+                start: start, stop: stop, len: len, dest: dest, delta: delta,
+                terminal_id: {},
+                total_delta: nil,
+              }
 
-    puts "     Addding map: #{new_map}"
+    # puts "     Addding map to lane #{lane[:label]}: #{new_map}"
     lane[:maps] << new_map
 end
 
+def set_min_max_mapped(lane)
+  sort_maps(lane)
+  lane[:min_mapped] = lane[:maps].first[:start]
+  lane[:max_mapped] = lane[:maps].last[:stop]
+end
+
 def add_missing_maps(lane, range)
-  puts "add_missing_maps(lane, #{range})"
-  pp lane
+  # puts "add_missing_maps(lane, #{range})"
+  # pp lane
   # return if range.nil? || range.empty?
-  return if lane[:min_mapped] && range.min >= lane[:min_mapped] && range.max <= lane[:max_mapped]
+
+  last_stop = range.min
+  # puts "  Find first gap starting at #{last_stop}:"
+
+  lane[:maps].each_with_object({}) do |m|
+    # puts "  Is there a gap prior to #{m[:start]}?"
+    # puts "    Gap between #{lane[:label]} #{last_stop} and #{m[:start]}" unless last_stop == m[:start]
+    last_stop = m[:stop]+1
+  end
+
+  # puts "  is range is within mapped values?"
+  # return if lane[:min_mapped] && range.min >= lane[:min_mapped] && range.max <= lane[:max_mapped]
+  # puts "  range is within mapped values?"
+
   return if lane[:from_stuff] == 'START' # Never expand starting maps!
 
-  lane[:min_mapped] = lane[:maps].map{|m| m[:start]}.min
-  lane[:max_mapped] = lane[:maps].map{|m| m[:stop]}.max
+  # puts "add_missing_maps found work to do..."
+  set_min_max_mapped(lane)
 
   if range.min < lane[:min_mapped]
     add_map(lane, range.min, lane[:min_mapped]-1)
@@ -114,33 +139,55 @@ def add_missing_maps(lane, range)
     add_map(lane, lane[:max_mapped] + 1, range.max)
   end
 
+  set_min_max_mapped(lane)
+
   prev = nil
 
-  puts "lane:"
-  pp lane
+  # puts "        lane: (before adding missing)"
+  # pp lane
 
-  puts "maps:"
-  pp lane[:maps]
-
-  lane[:maps].sort_by{ |m|
-    # puts "a: #{a}"
-    # puts "b: #{b}"
-    m[:start] }.each do |one|
+  # puts "  gap audit (with corrections)"
+  lane[:maps].dup.each do |one|
+    # puts "    checking for gap loop "
     if prev
+      # puts "     test for gap between #{prev[:stop]+1} .. #{one[:start]} "
       if prev[:stop]+1 < one[:start]
+        puts "  GENERATING missing map for gap: #{lane[:label]} #{prev[:stop]}..#{one[:start]}"
         add_map(lane, prev[:stop] + 1, one[:start] - 1)
       end
     end
     prev = one
   end
 
-  lane[:min_mapped] = lane[:maps].map{|m| m[:start]}.min
-  lane[:max_mapped] = lane[:maps].map{|m| m[:stop]}.max
+  set_min_max_mapped(lane)
+
+  # puts "        lane: (after adding missing)"
+  # pp lane
+
+end
+
+def mind_the_gap
+  puts "  gap audit (mind the gap)"
+
+  @lanes.each do |stuff, lane|
+    next if stuff == "START-HERE"
+    prev = nil
+
+    lane[:maps].each do |one|
+      if prev
+        # puts "     test for gap between #{prev[:stop]+1} .. #{one[:start]} "
+        if prev[:stop]+1 != one[:start]
+          raise "     GAP DETECTED between #{stuff} #{prev[:stop]+1} .. #{one[:start]} "
+        end
+      end
+      prev = one
+    end
+  end
 end
 
 # returns the lowest terminal_id from this point within range.
 def navigate(from_stuff, final_stuff, range = nil)
-  puts "\n navigate(#{from_stuff}, #{final_stuff}, #{range})..."
+  puts "navigate(#{from_stuff}, #{final_stuff}, #{range})"
   raise "LOCATION NOT FOUND" unless from_stuff
 
   if from_stuff == final_stuff
@@ -150,41 +197,48 @@ def navigate(from_stuff, final_stuff, range = nil)
   end
 
   lane = @lanes[from_stuff]
-  puts "  lane: ++++++++++++++++++++++++"
-  pp lane
+  # puts "  lane: ++++++++++++++++++++++++"
+  # pp lane
 
   puts "   ALREADY SOLVED: #{lane[:terminal_id][range]}" if lane[:terminal_id][range]
   return lane[:terminal_id][range] if lane[:terminal_id][range]
 
-  # puts "...WORKING HARD..."
+  # puts " >>> WORKING HARD <<< (#{from_stuff}, #{final_stuff}, #{range})"
   # sleep 1
 
   range ||= (lane[:min_mapped]..lane[:max_mapped])
-  puts range.inspect
+  # puts "     range: #{range.inspect}"
   add_missing_maps(lane, range) if range
 
   candidates = lane[:maps].map do |step|
-    puts "   lane #{lane[:label]} step before: #{step}"
-    delta = (step && step[:delta]) || 0
+    # puts "   lane #{lane[:label]} step before: #{step}"
+
+    # abort if no range overlaps:
+    if step[:start] > range.max || step[:stop]  < range.min
+      # puts "     skipping, no range overlap"
+      next
+    end
 
     # find best path within this map, over the requested range
-    range_start = max(step[:start], range.min)
-    range_stop  = min(step[:stop], range.max)
+    range_start = [step[:start], range.min].max + step[:delta]
+    range_stop  = [step[:stop] , range.max].min + step[:delta]
     sub_range = (range_start..range_stop)
+    # puts "   subrange: #{sub_range.inspect}"
+
     terminal_id = navigate(lane[:to_stuff], final_stuff, sub_range)
     lane[:terminal_id][range] ||= terminal_id
 
-    puts "   lane #{lane[:label]} step after: #{step}"
+    # puts "   lane #{lane[:label]} step after: #{step}"
     terminal_id
-  end
+  end.compact
 
-  puts " +++++++ Sort candidates #{candidates} to find best final..."
-  pp lane
+  # puts " +++++++ Sort candidates #{candidates} to find best final..."
+  # pp lane
   # pp lane[:maps]
   # puts "   #{lane[:maps].pluck(:terminal_id)}"
   best_terminal_id = candidates.min
   lane[:terminal_id][range] = best_terminal_id
-  puts "terminal_id should be set: ~~~~~~~~~~~~~~~~~~"
+  # puts "terminal_id should be set: ~~~~~~~~~~~~~~~~~~"
   # pp lane
   best_terminal_id
 
@@ -198,49 +252,21 @@ def process
   puts "****** WINNER: #{@best}"
 end
 
-# brute force too slow:
-# def process
-#   @seed_ranges.each do |range|
-#     puts "\n============ TEST FROM #{range}"
-#     range.each do |seed|
-#       # puts "  ========== test #{seed}"
-
-#       @seed_locations[seed] = navigate('seed', 'location', seed)
-#     end
-#   end
-# end
-
-# def terminal_id
-#   @seed_locations.sort_by{|key,val| val}.first
-# end
-
-@seeds = {}
 @lanes = {}
-@seed_locations = {}
 
-puts "parse..."
+puts "\nparse: ==========================================="
 parse
-puts "\nseeds: ==========================================="
-pp @seeds
-
-puts "\nmaps: ==========================================="
-pp @lanes
-
-# puts "\nseed_ranges: ==========================================="
-# pp @seed_ranges.inspect
 
 
 puts "\nprocess: ==========================================="
 process
+mind_the_gap
 
-puts "\nmaps: (FINAL) ==========================================="
+
+puts "\nlanes: (FINAL) ==========================================="
 pp @lanes
 
-# exit
 
-
-# puts "\nseed_locations: ==========================================="
-# pp @seed_locations
 puts "\nbest: ==========================================="
 pp @best
 
@@ -249,22 +275,10 @@ ans = @best
 
 
 puts "\nAnswer: #{ans} ==========================================="
-puts " #{ans} should equal location 62"
-
-puts "\n test answer =========="
-
-confirmation  = navigate('seed', 'location', 78)
-puts " #{confirmation} should equal location 62"
-
-confirmation  = navigate('seed', 'location', 56)
-puts " #{confirmation} should equal location 62"
-
-confirmation  = navigate('seed', 'location', 93)
-puts " #{confirmation} should equal location 62"
 
 
 
-
+# Example path: (not the best, probably)
 # Seed 79,
 # soil 81,
 # fertilizer 81,
@@ -274,3 +288,5 @@ puts " #{confirmation} should equal location 62"
 # humidity 78,
 # location 82.
 
+# 690038049 = That's not the right answer; your answer is too high.
+# 2254686 = That's the right answer!
