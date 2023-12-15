@@ -44,6 +44,38 @@ class Node
   end
 end
 
+class Ghost
+  attr_accessor :board, :initial, :current, :period
+
+  def initialize(board, initial)
+    @board = board
+    @initial = initial
+    @current = initial
+    enperiod
+  end
+
+  def advance()
+    # puts "  #{initial}...#{current}.advance(): period: #{period}"
+    turn = board.turns[period % board.turns_len]
+    node = board.nodes[current]
+    # puts "    Node to advance: #{node}, #{turn}"
+    @current = node.advance(turn)
+    @period += 1
+  end
+
+
+  def enperiod
+    @period = 0
+    advance until finished?
+    puts " ghost[:initial].period => #{period}"
+
+  end
+
+  def finished?
+    # raise if period > 10
+    current[-1] == 'Z'
+  end
+end
 
 class Board
   attr_accessor :nodes, :turns, :turns_len, :ghosts
@@ -71,19 +103,26 @@ class Board
     puts "\nINIT =========================== "
     parse
 
-    self.ghosts = nodes.keys.select { |n| n[-1] == 'A' }
+    ghost_names = nodes.keys.select { |n| n[-1] == 'A' }
+
+    self.ghosts = ghost_names.map { |name| Ghost.new(self, name) }
 
     puts "turns:"
     pp turns
     puts "nodes:"
     pp nodes
-    puts "ghosts:"
-    pp ghosts
+    # puts "ghosts:"
+    # pp ghosts
   end
 
   def advance_fleet(turn)
     puts
     ghosts.each_with_index { |g, n| ghosts[n] = nodes[g].advance(turn) }
+  end
+
+  def advance_first(turn)
+    puts
+    ghosts.each_with_index { |g, n| ghosts[n] = nodes[g].advance(turn); return }
   end
 
   def fleet_finished?
@@ -95,10 +134,11 @@ class Board
 
     steps = 0
     until fleet_finished?
-      puts "steps: #{steps}"  if steps%1000000 == 0
+      puts "steps: #{steps}"  if steps%100000 == 0
       # pp ghosts
       turn = turns[steps % turns_len]
       advance_fleet(turn)
+      # advance_first(turn)
       steps += 1
 
       # raise if steps > 10
@@ -108,8 +148,18 @@ class Board
     steps
   end
 
+  def ghost_LCM
+    periods = ghosts.map(&:period).uniq
+    puts "PERIODS: #{periods}"
+    # lcm = periods.inject(&:*)
+    lcm = periods.reduce(&:lcm)
+    puts "lcm: #{lcm}"
+    lcm
+  end
+
   def solve
-    ghost_fleet_navigate
+    # ghost_fleet_navigate
+    ghost_LCM
   end
 end
 
@@ -135,7 +185,9 @@ puts "Answer: #{ans}"
 # Part A:
 # Answer: 13019 - That's the right answer!
 
-
+# Part B:
+# Answer: 22054907450270570746800047 - That's not the right answer; your answer is too high. (This was product, not LCM)
+# Answer: 13524038372771 - That's the right answer!  - LCM, calculated elswehere
 
 # Failing when Iterating for 12 hours:
 # steps: 20,879,900,000
