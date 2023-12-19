@@ -322,4 +322,4 @@ puts "Part B Answer: #{ans_b}"
 
 
 # Part A: Answer: 6599 -  That's the right answer!
-# Part B Answer: 477
+# Part B Answer: 477 - That's the right answer!
