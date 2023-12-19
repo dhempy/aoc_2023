@@ -1,18 +1,61 @@
+
+class Buffer
+  attr_accessor :vals, :cursor, :len
+
+  def initialize(vals = [])
+    @vals = vals
+    @cursor = 0
+    @len = vals.size
+  end
+
+  def get
+    @vals[@cursor]
+      .tap { advance }
+  end
+
+  def peek
+    @vals[@cursor]
+  end
+
+  def advance
+    @cursor +=1
+  end
+
+  def revert
+    @cursor -=1
+  end
+
+  def empty?
+    vals.empty? || cursor == len
+  end
+
+  def to_s
+    if 0 == cursor
+      "[^#{vals[cursor..]&.join}] (#{cursor}/#{len})"
+    else
+      "[#{vals[..(cursor-1)]&.join} ^#{vals[(cursor)..]&.join}] (#{cursor}/#{len})"
+    end
+  end
+end
+
 class Record
-  attr_accessor :pattern, :counts, :slots, :needs
+  attr_accessor :srcs, :needs, :haves
 
   def initialize(pattern, counts)
     puts "init(\"#{pattern}\", [#{counts}])"
-    self.pattern = pattern # e.g. "?###????????"
-    self.counts = counts   # e.g. "3,2,1"
 
-    self.slots = pattern.chars # e.g. "?#..#" =? ['?', '#', '.', '.', '#']
-    self.needs = counts.split(',').map(&:to_i).reverse   # e.g. "3,2,1" => [1, 2, 3] -- Note reverse order for popping.
+    @srcs  = Buffer.new(pattern.chars)
+    puts "srcs : #{@srcs}"
 
+    raw_needs = counts.split(',').map { |n| '#' * n.to_i }.join('~')
+    # puts "9. raw_needs: #{raw_needs}"
+    @needs = Buffer.new(raw_needs.chars)
+    puts "needs: #{@needs}"
+
+    @haves = Buffer.new
+    puts "haves: #{@haves}"
     # puts inspect
     # puts "slots[0]: #{@slots[0].class}"
-    # puts "slots: #{@slots}"
-    # puts "needs: #{@needs}"
     # puts "needs.class: #{@needs.class}"
     # puts "needs[0]: #{@needs[0]}"
     # puts "needs[0].class: #{@needs[0].class}"
@@ -43,53 +86,130 @@ class Record
 
     # .### 3 => 1
 
+  def solutions(srcs, needs, haves, depth=0)
+    puts "  solutions():"
+    puts inspect
 
-  def solve(s = slots, n = needs, depth = 0)
-    puts "  solve(#{s}, #{n}):"
-    return 1 if s.empty? && n.empty?
-    return 0 if s.empty?
-    return 0 if n.empty?
-    raise "TOO DEEP!" if depth > 10   # REMOVE WHEN FOR REALS!!!!!!!
 
-    val  = slots[-1]
-    rest = slots[0..-2] # if this proves too expensive, don't duplicate, use one array, and change/restore via depth
-    # puts "    popped #{val}"
+    # puts "    ?success?"
+    return 1 if srcs.empty? && needs.empty?
+    # puts "    ?too much need?"
+    # return 0 if srcs.empty?
+    # puts "    ?too much src?"
+    # return 0 if needs.empty?
+    raise "TOO DEEP!" if depth > 50   # REMOVE WHEN FOR REALS!!!!!!!
 
-    case val
-    when '.'
-      solve(rest, n, depth+1)
+    got = srcs.get
+    # puts "    Got : #{got}"
+    need = needs.peek
+    # puts "    Need: #{need}"
+
+    count = 0
+
+    case got
     when '#'
-      sub_needs =
-      meet_a_need
-      def meet_a_need
-        n[-1] -= 1
-        n.pop if n[-1] == 0
+      case need
+      when '~'
+        puts "      yep: neeeded [~] got [#]. Advance need once for ~, and once for # and continue."
+        puts "           needs before    get: #{needs}"
+        needs.advance # consume ~
+        next_need = needs.get # get the next need (should be) #.
+        puts "           next_need: #{next_need}"
+        puts "           needs after     get: #{needs}"
+        if next_need == '#'
+          count = solutions(srcs, needs, haves, depth+1)
+          puts "           found #{count} solutions"
+        else
+          puts "      nope: source had an unneeded #."
+          count = 0
+        end
+        puts "           needs before revert: #{needs}"
+        needs.revert
+        needs.revert
+        puts "           needs after  revert: #{needs}"
+      when '#'
+        puts "      yepp: neeeded [#] got [#]. Dig deeper..."
+        needs.advance
+        count = solutions(srcs, needs, haves, depth+1)
+        needs.revert
+      when nil
+        puts "      nope: neeeded [nothing] got [#]."
+        count = 0
+      else
+        puts "      I'm not sure what to do with need=#{need.inspect}"
+        count = 1000
       end
 
-      def restore_a_need
-        n[-1] -= 1
-        n.pop if n[-1] == 0
+    when '.'
+      case need
+      when '#'
+        puts "      yepp: neeeded [#] got [.]. Advance src, leave need alone and keep looking."
+        count = solutions(srcs, needs, haves, depth+1)
+      when '~'
+        puts "      yepp: neeeded [.] got [.]. Dig deeper..."
+        count = solutions(srcs, needs, haves, depth+1)
+      when nil
+        puts "      yepp: neeeded [nothing] got [.]. Dig deeper..."
+        count = solutions(srcs, needs, haves, depth+1)
+      else
+        puts "      I'm not sure what to do with need=#{need.inspect}"
+        count = 1000
       end
 
-      solve(rest, n, depth+1)
 
     when '?'
-      # try with #:
-      solve(rest, n, depth+1)
+      case need
+      when '#'
+        puts "      yepp: neeeded [#] got [?]. Dig deeper on one path..."
+        needs.get
+        count = solutions(srcs, needs, haves, depth+1)
+        needs.revert
+      when '~'
+        puts "      yepp: neeeded [~] got [?]. Dig deeper on two paths..."
+        puts "        Dig the [.] path..."
+        count = solutions(srcs, needs, haves, depth+1)
 
-      # try with .:
-      raise "I;m not ready for thsi"
+        puts "        Dig the [#] path..."
+
+        needs.get # Consume the ~ in needs.
+        count += solutions(srcs, needs, haves, depth+1)
+        needs.revert  # restore the ~ in needs.
+      else
+        puts "      I'm not sure what to do with need=#{need.inspect}"
+        count = 1000
+      end
+
+
+    when nil
+      puts "      Nope. Ran out of input without satisfying needs."
+      count = 0
+
     else
-
+      puts "      HUH? I'm not sure what to do with got=#{got.inspect}"
+      count = -1000
     end
+
+    srcs.revert
+    return count
   end
+
+  # def meet_a_needs
+  #   n[-1] -= 1
+  #   n.pop if n[-1] == 0
+  # end
+
+  # def restore_a_needs
+  #   n[-1] -= 1
+  #   n.pop if n[-1] == 0
+  # end
 
   def expect_solution(expected)
     # puts inspect
-    got = solve
-    msg = "Got #{got}, expected #{expected} from #{inspect}"
+    got = solutions(srcs, needs, haves)
+
+    msg = "Got #{got}, expected #{expected} from \n#{inspect}"
     if got == expected
-      puts "PASSED: #{msg}"
+      puts "PASSED: #{msg}\n\n"
     else
       raise "FAIL: #{msg}"
       # raise "FAIL: #{msg}"
@@ -97,22 +217,41 @@ class Record
   end
 
   def inspect
-    "<Record: pattern=\"#{pattern}\" counts=#{counts}> -- #{slots}::#{needs}"
+    <<~INSP
+     <Record: srcs=\"#{@srcs}\"
+              needs=#{@needs}>
+    INSP
+              # => #{haves}
   end
 end
 
 
-Record.new('', '').expect_solution(1)
-Record.new('', '1').expect_solution(0)
-Record.new('#', '1').expect_solution(1)
-Record.new('?', '1').expect_solution(1)
-Record.new('#?', '1').expect_solution(1)
-Record.new('#?', '2').expect_solution(1)
 
+# # Don't need to handle edge cases:
+# Record.new('', '').expect_solution(1)
+# Record.new('', '1').expect_solution(0)
 # Record.new('.', '').expect_solution(1)
+
+# # Simple, undamaged cases:
+Record.new('#', '1').expect_solution(1)
 # Record.new('.#', '1').expect_solution(1)
+# Record.new('...#...', '1').expect_solution(1)
 # Record.new('#.', '1').expect_solution(1)
 # Record.new('##', '1').expect_solution(0)
+# Record.new('##', '2').expect_solution(1)
+
+# # With gaps in needs:
+# Record.new('#.##', '1,2').expect_solution(1)
+# Record.new('#..##', '1,2').expect_solution(1)
+# Record.new('#..##', '1,3').expect_solution(0)
+# Record.new('#..##...#..###...', '1,2,1,3').expect_solution(1)
+
+# with damated records:
+Record.new('?', '1').expect_solution(1)
+Record.new('#?', '1').expect_solution(1)
+Record.new('?#', '1').expect_solution(1)
+Record.new('#?', '2').expect_solution(1)
+
 # Record.new('#.##', '1,2').expect_solution(1)
 
 # Record.new('.###', '2').expect_solution(0)
@@ -131,7 +270,7 @@ class Board
   def parse
     puts "\nPARSE =========================== "
     # e.g. ?###???????? 3,2,1
-    self.records = STDIN.map do |line|
+    @records = STDIN.map do |line|
                       line.chomp!
                       next if line.empty?
                       puts "input: [#{line}]"
@@ -147,13 +286,13 @@ class Board
     pp self
   end
 
-  def solve_a
+  def solutions_a
     99999
   end
 end
 
 board = Board.new
-ans_a = board.solve_a
+ans_a = board.solutions_a
 puts "Answer: #{ans_a}"
 
 
