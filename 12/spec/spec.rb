@@ -41,63 +41,64 @@ describe 'check_solution(src, word_needs, str)' do
   let(:str) { '#' }
 
   context 'static successes' do
-    it { expect(check_solution('#', [0], '#')).to eq :COMPLETE }
-    it { expect(check_solution('.#', [0], '.#')).to eq :COMPLETE }
-    it { expect(check_solution('#.', [0], '#.')).to eq :COMPLETE }
-    it { expect(check_solution('.#.', [0], '.#.')).to eq :COMPLETE }
-    it { expect(check_solution('#......', [0], '#......')).to eq :COMPLETE }
-    it { expect(check_solution('...#...', [0], '...#...')).to eq :COMPLETE }
-    it { expect(check_solution('......#', [0], '......#')).to eq :COMPLETE }
-    it { expect(check_solution('##', [0], '##')).to eq :COMPLETE }
-    it { expect(check_solution('#.#', [0], '#.#')).to eq :COMPLETE }
-    it { expect(check_solution('.##..###.', [0], '.##..###.')).to eq :COMPLETE }
+# def check_solution(pattern, word_needs, str, remaining_needs)
+
+    it { expect(check_solution('#', [1], '#', [0])).to eq :COMPLETE }
+    it { expect(check_solution('.#', [1], '.#', [0])).to eq :COMPLETE }
+    it { expect(check_solution('#.', [1], '#.', [0])).to eq :COMPLETE }
+    it { expect(check_solution('.#.', [1], '.#.', [0])).to eq :COMPLETE }
+    it { expect(check_solution('#......', [1], '#......', [0])).to eq :COMPLETE }
+    it { expect(check_solution('...#...', [1], '...#...', [0])).to eq :COMPLETE }
+    it { expect(check_solution('......#', [1], '......#', [0])).to eq :COMPLETE }
+    it { expect(check_solution('##', [2], '##', [0])).to eq :COMPLETE }
+    it { expect(check_solution('#.#', [1,1], '#.#', [0])).to eq :COMPLETE }
+    it { expect(check_solution('.##..###.', [2,3], '.##..###.', [0])).to eq :COMPLETE }
   end
 
-  context 'static non-success' do
-    it { expect(check_solution('#', [1], '')).to eq :GO_ON }
-    it { expect(check_solution('#', [1], '##')).to eq :TOO_LONG }
-    it { expect(check_solution('#', [1], '#.')).to eq :TOO_LONG }
-    it { expect(check_solution('#.....', [1], '.#')).to eq :BAD_PATTERN }
+  context 'static go_on' do
+    it { expect(check_solution('#', [1], '', [])).to eq :GO_ON }
     # it { expect(check_solution('#', [2], '#')).to eq :FAILED_NEEDS } # maybe
-    it { expect(check_solution('#', [2], '#')).to eq :GO_ON } # to be caught by a later failure.
-    it { expect(check_solution('#...', [1], '##')).to eq :BAD_PATTERN }
+  end
+
+  context 'static failure' do
+    it { expect(check_solution('#', [1], '##', [0])).to eq :TOO_LONG }
+    it { expect(check_solution('#', [1], '#.', [0])).to eq :TOO_LONG }
+    it { expect(check_solution('#.....', [1], '.#', [0])).to eq :BAD_PATTERN }
+    it { expect(check_solution('#...', [1], '##', [0])).to eq :BAD_PATTERN }
+    # it { expect(check_solution('#', [2], '#', [])).to eq :FAILED_NEEDS }
+    it { expect(check_solution('#', [2], '#', [])).to eq :GO_ON }
   end
 
   context 'wildcard successes' do
-    it { expect(check_solution('?', [0], '#')).to eq :COMPLETE }
-    it { expect(check_solution('.?', [0], '.#')).to eq :COMPLETE }
-    it { expect(check_solution('?.', [0], '#.')).to eq :COMPLETE }
-    it { expect(check_solution('??', [0], '.#')).to eq :COMPLETE }
-    it { expect(check_solution('??', [0], '#.')).to eq :COMPLETE }
-    it { expect(check_solution('??', [0], '##')).to eq :COMPLETE }
-    it { expect(check_solution('..??..??..', [0], '...#..#...')).to eq :COMPLETE }
-    it { expect(check_solution('..??..??..', [0], '..##..##..')).to eq :COMPLETE }
+    it { expect(check_solution('?', [1], '#', [0])).to eq :COMPLETE }
+    it { expect(check_solution('.?', [1], '.#', [0])).to eq :COMPLETE }
+    it { expect(check_solution('?.', [1], '#.', [0])).to eq :COMPLETE }
+    it { expect(check_solution('??', [2], '##', [0])).to eq :COMPLETE }
+    it { expect(check_solution('..??..??..', [1,1], '...#..#...', [0])).to eq :COMPLETE }
   end
 
-  context 'wildcard non-successes' do
-    it { expect(check_solution('?', [1], '')).to eq :GO_ON }
-    # it { expect(check_solution('?', [2], '#')).to eq :FAILED_NEEDS } # maybe?
-    it { expect(check_solution('?', [2], '#')).to eq :GO_ON } # to be caught by a later failure.
-    # it { expect(check_solution('.?', [2], '.#')).to eq :FAILED_NEEDS } # maybe?
-    it { expect(check_solution('?.', [2], '#.')).to eq :GO_ON } # to be caught by a later failure.
-    # it { expect(check_solution('?.', [2], '#.')).to eq :FAILED_NEEDS } # maybe?
-    it { expect(check_solution('??', [2], '#')).to eq :GO_ON }
-    # it { expect(check_solution('??', [2], '.#')).to eq :FAILED_NEEDS } # maybe?
-    it { expect(check_solution('??', [2], '.#')).to eq :GO_ON } # to be caught by a later failure.
-    # it { expect(check_solution('??', [2], '..')).to eq :FAILED_NEEDS } # maybe?
-    it { expect(check_solution('??', [2], '..')).to eq :GO_ON } # to be caught by a later failure.
-    # it { expect(check_solution('????', [1], '##')).to eq :TOO_WORDY } # maybe?
-    it { expect(check_solution('????', [1], '##')).to eq :GO_ON } # to be caught by a later failure.
+  context 'wildcard go_on' do
+    it { expect(check_solution('?', [1], '', [])).to eq :GO_ON }
+    it { expect(check_solution('??', [2], '.#', [1])).to eq :GO_ON } # maybe?
+    it { expect(check_solution('??', [2], '..', [2])).to eq :GO_ON } # maybe?
+    it { expect(check_solution('??', [2], '..', [])).to eq :GO_ON } # maybe?
+  end
+
+  context 'wildcard failure' do
+    it { expect(check_solution('?', [1], '#', [0])).to eq :COMPLETE }
+    it { expect(check_solution('.?', [1], '.#', [0])).to eq :COMPLETE }
+    it { expect(check_solution('?.', [1], '#.', [0])).to eq :COMPLETE }
+    it { expect(check_solution('?.', [1], '#', [0])).to eq :GO_ON }
+    it { expect(check_solution('??', [2], '.#', [1])).to eq :GO_ON }
+    it { expect(check_solution('??', [2], '#.', [1])).to eq :GO_ON }
+    # it { expect(check_solution('??', [1], '##', [0])).to eq :FAILED_NEEDS } # Hmm...these seems legit? Might never happen.
+    it { expect(check_solution('..??..??..', [1,1], '...#......', [1])).to eq :GO_ON }
+    it { expect(check_solution('..??..??..', [1,1], '...#..............', [1])).to eq :TOO_LONG }
+    it { expect(check_solution('..??..??..', [1,1], '..##..##..', [0])).to eq :FAILED_NEEDS }
   end
 end
 
 describe 'solutions' do
-
-  # # Don't need to handle edge cases:
-  # Record.new('', '').expect_solution(1)
-  # Record.new('', '1').expect_solution(0)
-  # Record.new('.', '').expect_solution(1)
-
   context 'Simple, undamaged records' do
     it { expect(solutions('#', [1])).to eq 1 }
     it { expect(solutions('.#', [1])).to eq 1 }
@@ -133,22 +134,33 @@ describe 'solutions' do
     it { expect(solutions('.??.??.', [1,2])).to eq 2 }
     it { expect(solutions('.??.??.', [1,1])).to eq 4 }
 
-    # it { expect(solutions('##', [2])).to eq 1 }
-    # it { expect(solutions('.##.', [2])).to eq 1 }
-    # it { expect(solutions('#.#', [1,1])).to eq 1 }
-    # it { expect(solutions('.##.....#', [2,1])).to eq 1 }
-    # it { expect(solutions('.##.###.#', [2,3,1])).to eq 1 }
+    it { expect(solutions('##', [2])).to eq 1 }
+    it { expect(solutions('.##.', [2])).to eq 1 }
+    it { expect(solutions('#.#', [1,1])).to eq 1 }
+    it { expect(solutions('.##.....#', [2,1])).to eq 1 }
+    it { expect(solutions('.##.###.#', [2,3,1])).to eq 1 }
 
-    # it { expect(solutions('#', [2])).to eq 0 }
-    # it { expect(solutions('.#', [2])).to eq 0 }
-    # it { expect(solutions('#.', [2])).to eq 0 }
-    # it { expect(solutions('.#.', [2])).to eq 0 }
+    it { expect(solutions('#', [2])).to eq 0 }
+    it { expect(solutions('.#', [2])).to eq 0 }
+    it { expect(solutions('#.', [2])).to eq 0 }
+    it { expect(solutions('.#.', [2])).to eq 0 }
 
-    # it { expect(solutions('..##.###.#', [2,3,1])).to eq 1 }
-    # it { expect(solutions('..##.###..#', [2,3,1])).to eq 1 }
-    # it { expect(solutions('..##.###.#.', [2,3,1])).to eq 1 }
-    # it { expect(solutions('..##.###..#.', [2,3,1])).to eq 1 }
+    it { expect(solutions('..##.###.#', [2,3,1])).to eq 1 }
+    it { expect(solutions('..##.###..#', [2,3,1])).to eq 1 }
+    it { expect(solutions('..##.###.#.', [2,3,1])).to eq 1 }
+    it { expect(solutions('..##.###..#.', [2,3,1])).to eq 1 }
   end
+
+  # context 'Given Sample scenarios' do
+  #   it { expect(solutions('???.###', [1,1,3])).to eq 1 }
+  #   it { expect(solutions('.??..??...?##.', [1,1,3])).to eq 4  }
+  #   it { expect(solutions('?#?#?#?#?#?#?#?', [1,3,1,6])).to eq 1 }
+  #   it { expect(solutions('????.#...#...', [4,1,1])).to eq 1 }
+  #   it { expect(solutions('????.######..#####.', [1,6,5])).to eq 4  }
+  #   it { expect(solutions('?###????????', [3,2,1])).to eq 10  }
+
+  #   it { expect(solutions('???.###???.###???.###???.###???.###', [1, 1, 3, 1, 1, 3, 1, 1, 3, 1, 1, 3, 1, 1, 3])).to eq 1  }
+  # end
 
   # # With gaps in word_needs:
   # Record.new('#.##', '1,2').expect_solution(1)
@@ -176,6 +188,9 @@ describe 'solutions' do
 
 
   # Record.new('???', '1,1').expect_solution(1)
+
+  # FROM THE STORY:
   # Record.new('?###????????', '3,2,1').expect_solution(10)
+
 
 end
