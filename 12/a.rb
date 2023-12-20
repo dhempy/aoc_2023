@@ -24,22 +24,26 @@ def solutions(pattern, word_needs, str = '')
 end
 
 def check_solution(pattern, word_needs, str)
-  char_count = pattern.count('#')
+  return :TOO_LONG     if str.size > pattern.size
+
+  char_count = str.count('#')
   need_count = word_needs.sum
+  # puts "char_count: #{char_count}"
+  # puts "need_count: #{need_count}"
+  return :TOO_WORDY    if char_count > need_count
 
-  return 'TOO_WORDY'    if char_count > need_count
-  return 'TOO_LONG'     if str.size > pattern.size
-  return 'BAD_PATTERN'  if !pattern_match?(pattern, str)
+  return :BAD_PATTERN  if !pattern_match?(pattern, str)
 
+  need_stat = check_needs(word_needs, str, str.size == pattern.size)
+  return :FAILED_NEEDS if need_stat == :FAILED_NEEDS
+  return :GO_ON        if need_stat == :GO_ON
 
-  need_stat = needs_status(word_needs, str, str.size == pattern.size)
-  return 'UNMET_NEEDS'  if need_stat == FAILED_NEEDS
-  return 'UNMET_NEEDS'  if need_stat == GO_ON
-  return 'GO_ON'        if str.size < pattern.size
+  return :GO_ON        if str.size < pattern.size
 
-  return 'COMPLETE'     if str.size == pattern.size ## This may be too weak.
+  return :COMPLETE     if need_stat == :COMPLETE
+  # return :COMPLETE     if str.size == pattern.size ## This may be too weak.
 
-  return 'UNKNOWN!!!'
+  return :UNKNOWN
   # To do: Find many more ways to strike down INVALID attempts early on.
 end
 
@@ -52,28 +56,48 @@ def pattern_match?(pattern, str)
 end
 
 # Only checks through str. string may become invalid when it grows longer.
-# if fully, then the needs must be fully, exactly met.
-def needs_status(word_needs, str, fully)
-  puts "needs_status?(#{word_needs}, '#{str}', #{fully})"
+# if exact_match, then the needs must be exact_match, exactly met.
+def check_needs(word_needs, str, exact_match)
+  # puts "check_needs?(#{word_needs}, '#{str}', #{exact_match})"
   # binding.pry
+
   word_lengths = str.split('.').map(&:length).select(&:positive?)
-  puts "str word lengths: #{word_lengths}"
-  return 'GO_ON' if word_lengths.empty? && !fully
+
+  # puts "str word lengths: #{word_lengths}"
+  return :GO_ON if word_lengths.empty? && !exact_match
 
   latest_word = word_lengths.count - 1
-  puts "latest_word: #{latest_word}"
-  puts " (word_lengths[latest_word] <= word_needs[latest_word]) "
-  puts " (#{word_lengths[latest_word]} <= #{word_needs[latest_word]}) "
+  # puts "latest_word: #{latest_word}"
 
-  return 'COMPLETE' if fully && word_lengths == word_needs
-  return 'FAILED_NEEDS' if fully && word_lengths != word_needs
+  # puts "  complete?"
+  return :COMPLETE if exact_match && word_lengths == word_needs
 
-  if (
-       (word_lengths[latest_word] <= word_needs[latest_word]) &&
-       (word_lengths[..(latest_word-1)].zip(word_needs).all? { |have, need| have == need })
-     )
-    return 'GO_ON'
-  end
+  # puts "  FAILED_NEEDS? (exact)"
+
+  return :FAILED_NEEDS if exact_match && word_lengths != word_needs
+
+  # puts "  FAILED_NEEDS? (so far)"
+
+  # puts " (word_lengths[latest_word] > word_needs[latest_word]) "
+  # puts " (#{word_lengths[latest_word]} > #{word_needs[latest_word]}) "
+
+  return :FAILED_NEEDS if (word_lengths[latest_word] > word_needs[latest_word])
+  return :GO_ON if latest_word == 0 # e.g. they're on their first word...nothing else to check.
+
+  # puts " (word_lengths[..(latest_word-1)].zip(word_needs).any? { |a, b| a != b }) "
+  # puts " (word_lengths[..(latest_word-1)].zip(word_needs).any? { |a, b| a != b }) "
+
+
+
+  # This test *might* be redundant. Try removing it after all else is done.
+  return :FAILED_NEEDS if
+       word_lengths[..(latest_word-1)].zip(word_needs).any? { |a, b|
+        # puts "  #{a} != #{b}"
+        a != b
+      }
+
+  # puts 'Nothing else to check... GO ON...'
+  return :GO_ON
 end
 
 # Returns an array of possible next steps.
