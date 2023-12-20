@@ -1,364 +1,267 @@
 
-class Buffer
-  attr_accessor :vals, :cursor, :len
 
-  def initialize(vals = [])
-    @vals = vals
-    @cursor = 0
-    @len = vals.size
-  end
+# Returns the number of solutions to the input
 
-  def get
-    @vals[@cursor]
-      .tap { advance }
-  end
+def solutions(pattern, word_needs, str = '')
+  puts "solutions(#{pattern}, #{word_needs}, #{str})"
 
-  def push(val)
-    @vals.push(val)
-      .tap { @len = vals.size }
+  action = check_solution(pattern, word_needs, str)
 
-    self
-  end
-
-  def pop
-    @vals.pop
-      .tap { @len = vals.size }
-  end
-
-  def peek
-    @vals[@cursor]
-  end
-
-  def last
-    @vals[-1]
-  end
-
-  def advance
-    @cursor +=1
-  end
-
-  def revert
-    @cursor -=1
-  end
-
-  def empty?
-    vals.empty? || cursor == len
-  end
-
-  def deep_dup
-    self.dup.tap { |my| my.vals = self.vals.dup }
-  end
-
-  def to_s
-    if 0 == cursor
-      "[_#{vals[cursor..]&.join}]"
-    else
-      "[#{vals[..(cursor-1)]&.join}_#{vals[(cursor)..]&.join}]"
-    end
-    # (#{cursor}/#{len})
+  case action
+  when 'GO_ON'
+    puts "   GO_ON: #{str}"
+    # return find_next_strings(current_string, word_needs).sum do
+    #                                            |longer_str, word_needs|
+    #   solutions(pattern, word_needs, longer_str)
+    # end
+  when 'COMPLETE'
+    puts "COMPLETE: #{str}"
+    return 1
+  else
+    puts "    HALT: #{str} (#{action})"
+    return 0
   end
 end
 
-class Record
-  attr_accessor :srcs, :needs, :haves
+def check_solution(pattern, word_needs, str)
+  char_count = pattern.count('#')
+  need_count = word_needs.sum
 
-  def initialize(pattern, counts)
-    puts "init(\"#{pattern}\", [#{counts}])"
-
-    @srcs  = Buffer.new(pattern.chars)
-    puts "srcs : #{@srcs}"
-
-    raw_needs = '~' + counts.split(',').map { |n| '#' * n.to_i }.join('~')
-    # puts "9. raw_needs: #{raw_needs}"
-    @needs = Buffer.new(raw_needs.chars)
-    puts "needs: #{@needs}"
-
-    @haves = Buffer.new
-    puts "haves: #{@haves}"
-    # puts inspect
-    # puts "slots[0]: #{@slots[0].class}"
-    # puts "needs.class: #{@needs.class}"
-    # puts "needs[0]: #{@needs[0]}"
-    # puts "needs[0].class: #{@needs[0].class}"
-  end
-
-  # Equipped with this information, it is your job to figure out how
-  # many different arrangements of operational and broken springs fit
-  # the given criteria in each row.
-
-    # ?###???????? 3,2,1
-
-    # .###.##.#...
-    # .###.##..#..
-    # .###.##...#.
-    # .###.##....#
-    # .###..##.#..
-    # .###..##..#.
-    # .###..##...#
-    # .###...##.#.
-    # .###...##..#
-    # .###....##.#
-
-    # ?### 3   => 1
-    # .###
-
-    # ?### 2   => 0
-    # .###
-
-    # .### 3 => 1
-
-  def solutions(srcs, needs, haves, depth=0)
-    puts "  solutions():"
-    puts inspect
-    puts "         haves=#{haves}"
-
-    # puts "    ?success?"
-    if srcs.empty? && needs.empty?
-      puts "           >>>>> SUCCESS <<<<< srcs and needs are empty: #{haves}"
-      return 1
-    end
-    # puts "    ?too much need?"
-    # return 0 if srcs.empty?
-    # puts "    ?too much src?"
-    # return 0 if needs.empty?
-    raise "TOO DEEP!" if depth > 50   # REMOVE WHEN FOR REALS!!!!!!!
-
-    got = srcs.get
-    need = needs.peek
-    puts "    Got : #{got}"
-    puts "    Need: #{need}"
-
-    count = 0
-
-    case got
-    when '#'
-      case need
-      when '~'
-        puts "      yep: needed [~] got [#]. Advance need once for ~, and once for # and continue."
-        puts "           needs before    get: #{needs}"
-        needs.advance # consume ~
-        next_need = needs.get # get the next need (should be) #.
-        puts "           next_need: #{next_need}"
-        puts "           needs after     get: #{needs}"
-        if next_need == '#'
-          count = solutions(srcs, needs, haves.deep_dup.push(got), depth+1)
-          puts "           found #{count} solutions"
-        else
-          puts "      nope: source had an unneeded #."
-          count = 0
-        end
-        puts "           needs before revert: #{needs}"
-        needs.revert
-        needs.revert
-        puts "           needs after  revert: #{needs}"
-      when '#'
-        puts "      yepp: needed [#] got [#]. Dig deeper..."
-        needs.advance
-        count = solutions(srcs, needs, haves.deep_dup.push(got), depth+1)
-        needs.revert
-      when nil
-        puts "      nope: needed [nothing] got [#]."
-        count = 0
-      else
-        puts "      I'm not sure what to do with need=#{need.inspect} when I got [#]"
-        count = 1000
-      end
-
-    when '.'
-      case need
-      when '#'
-        prior = haves.last
-        if prior == '.'
-          puts "      yepp: needed [#] got [.] already in a word break. Advance src, leave need alone and keep looking."
-          count = solutions(srcs, needs, haves.deep_dup.push(got), depth+1)
-        else
-          puts "      nope: needed [#] got [.] in the middle of a word. Too soon to break a word."
-        end
-      when '~'
-        puts "      yepp: needed [.] got [.]. Dig deeper..."
-        count = solutions(srcs, needs, haves.deep_dup.push(got), depth+1)
-      when nil
-        puts "      yepp: needed [nothing] got [.]. Dig deeper..."
-        count = solutions(srcs, needs, haves.deep_dup.push(got), depth+1)
-      else
-        puts "      I'm not sure what to do with need=#{need.inspect} when I got [.]"
-        count = 1000
-      end
-
-    when '?'
-      case need
-      when '#'
-        puts "      yepp: needed [#] got [?]. Dig deeper on one path..."
-        needs.get
-        count = solutions(srcs, needs, haves.deep_dup.push('#'), depth+1)
-        needs.revert
-      when '~'
-        puts "      yepp: needed [~] got [?]. Dig deeper on two paths..."
-        prior = haves.last
-
-        puts "        A) Dig the [#]-for-[?] path. Advance needs to match the implied [#]"
-        puts "            srcs: #{srcs}"
-        puts "            haves: #{haves}"
-        if prior == '#'
-          puts "          skip that: need a gap since prior [#]"
-        else
-          puts "                A)HAVES: #{haves} (#{haves.class}) -- #{haves.inspect}"
-          hash_haves = haves.deep_dup
-
-          puts "           needs before    get: #{needs}"
-          needs.get # Consume the ~ in needs.
-          needs.get # Consume the # in needs.
-          puts "           needs after     get: #{needs}"
-
-          count += solutions(srcs, needs, hash_haves.push('#'), depth+1)
-          puts "        found #{count} (both paths) solutions"
-
-          puts "           needs before    revert: #{needs}"
-          needs.revert  # restore the # in needs.
-          needs.revert  # restore the ~ in needs.
-          puts "           needs after     revert: #{needs}"
-          puts "                C)HAVES: #{haves} (#{haves.class}) -- #{haves.inspect}"
-        end
-
-        puts "        B) Dig the [.]-for-[?] path. Don't advance needs."
-        puts "                B)HAVES: #{haves} (#{haves.class}) -- #{haves.inspect}"
-        dot_haves = haves.deep_dup
-        count += solutions(srcs, needs, dot_haves.push('.'), depth+1)
-        puts "        found #{count} solutions"
-
-      when nil
-        puts "      Yep. I have no more needs, so can meet [?] with only a [.], not [#]"
-        count += solutions(srcs, needs, haves.deep_dup.push('.'), depth+1)
-
-      else
-        puts "      I'm not sure what to do with need=#{need.inspect} when I got [?]"
-        count = 1000
-      end
+  return 'TOO_WORDY'    if char_count > need_count
+  return 'TOO_LONG'     if str.size > pattern.size
+  return 'BAD_PATTERN'  if !pattern_match?(pattern, str)
 
 
-    when nil
-      puts "      nope: Ran out of input without satisfying needs."
-      count = 0
+  need_stat = needs_status(word_needs, str, str.size == pattern.size)
+  return 'UNMET_NEEDS'  if need_stat == FAILED_NEEDS
+  return 'UNMET_NEEDS'  if need_stat == GO_ON
+  return 'GO_ON'        if str.size < pattern.size
 
-    else
-      puts "      HUH? I'm not sure what to do with got=#{got.inspect}"
-      count = -1000
-    end
+  return 'COMPLETE'     if str.size == pattern.size ## This may be too weak.
 
-    srcs.revert
-    return count
-  end
+  return 'UNKNOWN!!!'
+  # To do: Find many more ways to strike down INVALID attempts early on.
+end
 
-  # def meet_a_needs
-  #   n[-1] -= 1
-  #   n.pop if n[-1] == 0
-  # end
-
-  # def restore_a_needs
-  #   n[-1] -= 1
-  #   n.pop if n[-1] == 0
-  # end
-
-  def expect_solution(expected)
-    # puts inspect
-    got = solutions(srcs, needs, haves)
-
-    msg = "Got #{got}, expected #{expected} from \n#{inspect}"
-    if got == expected
-      puts "PASSED: #{msg}\n\n"
-    else
-      raise "FAIL: #{msg}"
-      # raise "FAIL: #{msg}"
-    end
-  end
-
-  def inspect
-    <<~INSP
-     <Record: srcs =#{@srcs}
-              needs=#{@needs} >
-    INSP
-              # => #{haves}
+# Only checks through str. string may become invalid when it grows longer.
+def pattern_match?(pattern, str)
+  str.chars.zip(pattern.chars).all? do |s, p|
+    # puts "patern_match(#{p}, #{s})"
+    p == s || p=='?'
   end
 end
 
+# Only checks through str. string may become invalid when it grows longer.
+# if fully, then the needs must be fully, exactly met.
+def needs_status(word_needs, str, fully)
+  puts "needs_status?(#{word_needs}, '#{str}', #{fully})"
+  # binding.pry
+  word_lengths = str.split('.').map(&:length).select(&:positive?)
+  puts "str word lengths: #{word_lengths}"
+  return 'GO_ON' if word_lengths.empty? && !fully
+
+  latest_word = word_lengths.count - 1
+  puts "latest_word: #{latest_word}"
+  puts " (word_lengths[latest_word] <= word_needs[latest_word]) "
+  puts " (#{word_lengths[latest_word]} <= #{word_needs[latest_word]}) "
+
+  return 'COMPLETE' if fully && word_lengths == word_needs
+  return 'FAILED_NEEDS' if fully && word_lengths != word_needs
+
+  if (
+       (word_lengths[latest_word] <= word_needs[latest_word]) &&
+       (word_lengths[..(latest_word-1)].zip(word_needs).all? { |have, need| have == need })
+     )
+    return 'GO_ON'
+  end
+end
+
+# Returns an array of possible next steps.
+# Pays no regard to pattern at all.
+# New strings may be too long, too short, or invalid against pattern.
+# If dst ends in "#"", and need_counds starts with zero,
+#   then a new word is started ("." addedd), and the zero in need_counds is removed.
+# Steps are each an array: [longer_str, word_needs].
+#   longer_str is a new array, exactly one char longer than dst.
+#   word_needs is a new array, copied from word_needs and adjusted as needed.
+# def find_next_strings(current_string, word_needs)
+#   possibilities = []
+#   last_char = current_string[-1]
+#   current_need = word_needs[0]
+
+#   if (last_char == '#' &&  current_need.zero?)
+#     puts "  ++ End of a word. Insert separator, remove word from word_needs"
+#     possibilities << [ current_string + '.', word_needs.dup[1..]]
+
+#   else if (last_char == '#' and current_need.positive?)
+#     puts "  ++ Continue word. Add word char, decrement current word_needs"
+#     new_needs = word_needs.dup
+#     new_needs[0] -= 1
+#     possibilities << [ current_string + '#', new_needs]
+
+#   else if (last_char == '#' and current_need.empty?)
+#     puts "  ++ Successful solution!"
+
+#   else if (last_char == '.' &&  current_need.zero?)
+#     puts "  // Between words. Try both:"
+#     puts "  ++ Between words. 1) Add separator, and..."
+#     possibilities << [ current_string + '.', word_needs.dup]
+
+#     puts "  ++ Between words. 2) ...and, Start new word"
+#     new_needs = word_needs.dup[1..]
+#     new_needs[0] -= 1  # Account for new "#" added.
+#     possibilities << [ current_string + '#', new_needs]
+
+#   else if (last_char == '.' and current_need.positive?)
+#     raise "  ?? HUH? should't ever see this."
+
+#   else if (last_char == '.' and current_need.empty?)
+#     puts "  ++ Successful solution!"
+
+#   else if (last_char.nil?)
+#     puts "  ++ Start of string. Try both:"
+
+#     puts "  ++ Start of string. 1) Add separator, and..."
+#     possibilities << [ current_string + '.', word_needs.dup]
+
+#     puts "  ++ Start of string. 2) ...and, Start new word"
+#     new_needs = word_needs.dup # Don't remove first word!
+#     new_needs[0] -= 1  # Account for new "#" added.
+#     possibilities << [ current_string + '#', new_needs]
+#   end
+
+#   possibilities
+# end
 
 
-# # Don't need to handle edge cases:
-# Record.new('', '').expect_solution(1)
-# Record.new('', '1').expect_solution(0)
-# Record.new('.', '').expect_solution(1)
 
-# # Simple, undamaged cases:
+
+
+
+
+
+
+
+
+
+
+
+
+# class Record
+#   def initialize(pattern, counts)
+#     puts "Board.init(\"#{pattern}\", [#{counts}])"
+
+#     @pattern = pattern.chars
+
+#     # This approach keeps needs as an array of ints.
+#     # This will be used to recursively create many permutations of those needs.
+#     @word_needs = counts.split(',').map { |n| n.to_i }
+
+#     puts inspect
+#   end
+
+#   def expect_solution(expected)
+#     # puts inspect
+#     puts "expect_solution(#{expected}): pattern=#{@pattern} word_needs=#{@word_needs} haves=#{haves}"
+#     got = solutions(@pattern, @word_needs)
+
+#     msg = "Got #{got}, expected #{expected} from \n#{inspect}"
+#     if got == expected
+#       puts "PASSED: #{msg}\n\n"
+#     else
+#       raise "FAIL: #{msg}"
+#       # raise "FAIL: #{msg}"
+#     end
+#   end
+
+#   def inspect
+#     <<~INSP
+#      <Record: pattern =#{@pattern}
+#               word_needs=#{@word_needs}
+#               haves=#{@haves}>
+#     INSP
+#               # => #{haves}
+#   end
+# end
+
+
+
+# # # Don't need to handle edge cases:
+# # Record.new('', '').expect_solution(1)
+# # Record.new('', '1').expect_solution(0)
+# # Record.new('.', '').expect_solution(1)
+
+# # # Simple, undamaged cases:
 # Record.new('#', '1').expect_solution(1)
-# Record.new('.#', '1').expect_solution(1)
-# Record.new('...#...', '1').expect_solution(1)
-# Record.new('#.', '1').expect_solution(1)
-# Record.new('##', '1').expect_solution(0)
-# Record.new('##', '2').expect_solution(1)
+# # Record.new('.#', '1').expect_solution(1)
+# # Record.new('...#...', '1').expect_solution(1)
+# # Record.new('#.', '1').expect_solution(1)
+# # Record.new('##', '1').expect_solution(0)
+# # Record.new('##', '2').expect_solution(1)
 
-# # With gaps in needs:
+# # # With gaps in word_needs:
 # Record.new('#.##', '1,2').expect_solution(1)
-# Record.new('#..##', '1,2').expect_solution(1)
-# Record.new('#..##', '1,3').expect_solution(0)
-# Record.new('#..##...#..###...', '1,2,1,3').expect_solution(1)
+# # Record.new('#..##', '1,2').expect_solution(1)
+# # Record.new('#..##', '1,3').expect_solution(0)
+# # Record.new('#..##...#..###...', '1,2,1,3').expect_solution(1)
 
-# # with damaged records:
-# Record.new('?', '1').expect_solution(1)
-# Record.new('???', '1').expect_solution(3)
-# Record.new('#?', '1').expect_solution(1)
-# Record.new('?#', '1').expect_solution(1)
-# Record.new('?##', '3').expect_solution(1)
-# Record.new('#?', '2').expect_solution(1)
-# Record.new('.##?...', '3').expect_solution(1)
+# # # with damaged records:
+# # Record.new('?', '1').expect_solution(1)
+# # Record.new('???', '1').expect_solution(3)
+# # Record.new('#?', '1').expect_solution(1)
+# # Record.new('?#', '1').expect_solution(1)
+# # Record.new('?##', '3').expect_solution(1)
+# # Record.new('#?', '2').expect_solution(1)
+# # Record.new('.##?...', '3').expect_solution(1)
 
-# Record.new('.???', '2').expect_solution(2)
-# Record.new('.???.', '1').expect_solution(3)
-# Record.new('#??', '1,1').expect_solution(1)
+# # Record.new('.???', '2').expect_solution(2)
+# # Record.new('.???.', '1').expect_solution(3)
+# # Record.new('#??', '1,1').expect_solution(1)
+# # Record.new('???', '1,1').expect_solution(1)
+# # Record.new('.?.?.', '1,1').expect_solution(1)
+# # Record.new('.??.?.', '1,1').expect_solution(2)
+# # Record.new('.?.??.', '1,1').expect_solution(2)
+# Record.new('???.???', '1,2').expect_solution(6)
+
+
 # Record.new('???', '1,1').expect_solution(1)
-# Record.new('.?.?.', '1,1').expect_solution(1)
-# Record.new('.??.?.', '1,1').expect_solution(2)
-# Record.new('.?.??.', '1,1').expect_solution(2)
-Record.new('???.???', '1,2').expect_solution(6)
-
-
-Record.new('???', '1,1').expect_solution(1)
-Record.new('?###????????', '3,2,1').expect_solution(10)
+# Record.new('?###????????', '3,2,1').expect_solution(10)
 
 
 
 
-class Board
-  attr_accessor :records
+# class Board
+#   attr_accessor :records
 
-  def parse
-    puts "\nPARSE =========================== "
-    # e.g. ?###???????? 3,2,1
-    @records = STDIN.map do |line|
-                      line.chomp!
-                      next if line.empty?
-                      puts "input: [#{line}]"
-                      pattern, counts = line.split(' ')
-                      Record.new(pattern, counts)
-                    end
-  end
+#   def parse
+#     puts "\nPARSE =========================== "
+#     # e.g. ?###???????? 3,2,1
+#     @records = STDIN.map do |line|
+#                       line.chomp!
+#                       next if line.empty?
+#                       puts "input: [#{line}]"
+#                       pattern, counts = line.split(' ')
+#                       Record.new(pattern, counts)
+#                     end
+#   end
 
-  def initialize
-    puts "\nINIT =========================== "
-    parse
+#   def initialize
+#     puts "\nINIT =========================== "
+#     parse
 
-    pp self
-  end
+#     pp self
+#   end
 
-  def solutions_a
-    99999
-  end
-end
+#   def solutions_a
+#     99999
+#   end
+# end
 
-board = Board.new
-ans_a = board.solutions_a
-puts "Answer: #{ans_a}"
+# board = Board.new
+# ans_a = board.solutions_a
+# puts "Answer: #{ans_a}"
 
 
-# Part A:
+# # Part A:
 
-# Part B:
+# # Part B:
