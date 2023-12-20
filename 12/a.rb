@@ -13,8 +13,24 @@ class Buffer
       .tap { advance }
   end
 
+  def push(val)
+    @vals.push(val)
+      .tap { @len = vals.size }
+
+    self
+  end
+
+  def pop
+    @vals.pop
+      .tap { @len = vals.size }
+  end
+
   def peek
     @vals[@cursor]
+  end
+
+  def last
+    @vals[-1]
   end
 
   def advance
@@ -29,12 +45,17 @@ class Buffer
     vals.empty? || cursor == len
   end
 
+  def deep_dup
+    self.dup.tap { |my| my.vals = self.vals.dup }
+  end
+
   def to_s
     if 0 == cursor
-      "[^#{vals[cursor..]&.join}] (#{cursor}/#{len})"
+      "[_#{vals[cursor..]&.join}]"
     else
-      "[#{vals[..(cursor-1)]&.join} ^#{vals[(cursor)..]&.join}] (#{cursor}/#{len})"
+      "[#{vals[..(cursor-1)]&.join}_#{vals[(cursor)..]&.join}]"
     end
+    # (#{cursor}/#{len})
   end
 end
 
@@ -47,7 +68,7 @@ class Record
     @srcs  = Buffer.new(pattern.chars)
     puts "srcs : #{@srcs}"
 
-    raw_needs = counts.split(',').map { |n| '#' * n.to_i }.join('~')
+    raw_needs = '~' + counts.split(',').map { |n| '#' * n.to_i }.join('~')
     # puts "9. raw_needs: #{raw_needs}"
     @needs = Buffer.new(raw_needs.chars)
     puts "needs: #{@needs}"
@@ -89,10 +110,13 @@ class Record
   def solutions(srcs, needs, haves, depth=0)
     puts "  solutions():"
     puts inspect
-
+    puts "         haves=#{haves}"
 
     # puts "    ?success?"
-    return 1 if srcs.empty? && needs.empty?
+    if srcs.empty? && needs.empty?
+      puts "           >>>>> SUCCESS <<<<< srcs and needs are empty: #{haves}"
+      return 1
+    end
     # puts "    ?too much need?"
     # return 0 if srcs.empty?
     # puts "    ?too much src?"
@@ -100,9 +124,9 @@ class Record
     raise "TOO DEEP!" if depth > 50   # REMOVE WHEN FOR REALS!!!!!!!
 
     got = srcs.get
-    # puts "    Got : #{got}"
     need = needs.peek
-    # puts "    Need: #{need}"
+    puts "    Got : #{got}"
+    puts "    Need: #{need}"
 
     count = 0
 
@@ -110,14 +134,14 @@ class Record
     when '#'
       case need
       when '~'
-        puts "      yep: neeeded [~] got [#]. Advance need once for ~, and once for # and continue."
+        puts "      yep: needed [~] got [#]. Advance need once for ~, and once for # and continue."
         puts "           needs before    get: #{needs}"
         needs.advance # consume ~
         next_need = needs.get # get the next need (should be) #.
         puts "           next_need: #{next_need}"
         puts "           needs after     get: #{needs}"
         if next_need == '#'
-          count = solutions(srcs, needs, haves, depth+1)
+          count = solutions(srcs, needs, haves.deep_dup.push(got), depth+1)
           puts "           found #{count} solutions"
         else
           puts "      nope: source had an unneeded #."
@@ -128,60 +152,92 @@ class Record
         needs.revert
         puts "           needs after  revert: #{needs}"
       when '#'
-        puts "      yepp: neeeded [#] got [#]. Dig deeper..."
+        puts "      yepp: needed [#] got [#]. Dig deeper..."
         needs.advance
-        count = solutions(srcs, needs, haves, depth+1)
+        count = solutions(srcs, needs, haves.deep_dup.push(got), depth+1)
         needs.revert
       when nil
-        puts "      nope: neeeded [nothing] got [#]."
+        puts "      nope: needed [nothing] got [#]."
         count = 0
       else
-        puts "      I'm not sure what to do with need=#{need.inspect}"
+        puts "      I'm not sure what to do with need=#{need.inspect} when I got [#]"
         count = 1000
       end
 
     when '.'
       case need
       when '#'
-        puts "      yepp: neeeded [#] got [.]. Advance src, leave need alone and keep looking."
-        count = solutions(srcs, needs, haves, depth+1)
+        prior = haves.last
+        if prior == '.'
+          puts "      yepp: needed [#] got [.] already in a word break. Advance src, leave need alone and keep looking."
+          count = solutions(srcs, needs, haves.deep_dup.push(got), depth+1)
+        else
+          puts "      nope: needed [#] got [.] in the middle of a word. Too soon to break a word."
+        end
       when '~'
-        puts "      yepp: neeeded [.] got [.]. Dig deeper..."
-        count = solutions(srcs, needs, haves, depth+1)
+        puts "      yepp: needed [.] got [.]. Dig deeper..."
+        count = solutions(srcs, needs, haves.deep_dup.push(got), depth+1)
       when nil
-        puts "      yepp: neeeded [nothing] got [.]. Dig deeper..."
-        count = solutions(srcs, needs, haves, depth+1)
+        puts "      yepp: needed [nothing] got [.]. Dig deeper..."
+        count = solutions(srcs, needs, haves.deep_dup.push(got), depth+1)
       else
-        puts "      I'm not sure what to do with need=#{need.inspect}"
+        puts "      I'm not sure what to do with need=#{need.inspect} when I got [.]"
         count = 1000
       end
-
 
     when '?'
       case need
       when '#'
-        puts "      yepp: neeeded [#] got [?]. Dig deeper on one path..."
+        puts "      yepp: needed [#] got [?]. Dig deeper on one path..."
         needs.get
-        count = solutions(srcs, needs, haves, depth+1)
+        count = solutions(srcs, needs, haves.deep_dup.push('#'), depth+1)
         needs.revert
       when '~'
-        puts "      yepp: neeeded [~] got [?]. Dig deeper on two paths..."
-        puts "        Dig the [.] path..."
-        count = solutions(srcs, needs, haves, depth+1)
+        puts "      yepp: needed [~] got [?]. Dig deeper on two paths..."
+        prior = haves.last
 
-        puts "        Dig the [#] path..."
+        puts "        A) Dig the [#]-for-[?] path. Advance needs to match the implied [#]"
+        puts "            srcs: #{srcs}"
+        puts "            haves: #{haves}"
+        if prior == '#'
+          puts "          skip that: need a gap since prior [#]"
+        else
+          puts "                A)HAVES: #{haves} (#{haves.class}) -- #{haves.inspect}"
+          hash_haves = haves.deep_dup
 
-        needs.get # Consume the ~ in needs.
-        count += solutions(srcs, needs, haves, depth+1)
-        needs.revert  # restore the ~ in needs.
+          puts "           needs before    get: #{needs}"
+          needs.get # Consume the ~ in needs.
+          needs.get # Consume the # in needs.
+          puts "           needs after     get: #{needs}"
+
+          count += solutions(srcs, needs, hash_haves.push('#'), depth+1)
+          puts "        found #{count} (both paths) solutions"
+
+          puts "           needs before    revert: #{needs}"
+          needs.revert  # restore the # in needs.
+          needs.revert  # restore the ~ in needs.
+          puts "           needs after     revert: #{needs}"
+          puts "                C)HAVES: #{haves} (#{haves.class}) -- #{haves.inspect}"
+        end
+
+        puts "        B) Dig the [.]-for-[?] path. Don't advance needs."
+        puts "                B)HAVES: #{haves} (#{haves.class}) -- #{haves.inspect}"
+        dot_haves = haves.deep_dup
+        count += solutions(srcs, needs, dot_haves.push('.'), depth+1)
+        puts "        found #{count} solutions"
+
+      when nil
+        puts "      Yep. I have no more needs, so can meet [?] with only a [.], not [#]"
+        count += solutions(srcs, needs, haves.deep_dup.push('.'), depth+1)
+
       else
-        puts "      I'm not sure what to do with need=#{need.inspect}"
+        puts "      I'm not sure what to do with need=#{need.inspect} when I got [?]"
         count = 1000
       end
 
 
     when nil
-      puts "      Nope. Ran out of input without satisfying needs."
+      puts "      nope: Ran out of input without satisfying needs."
       count = 0
 
     else
@@ -218,8 +274,8 @@ class Record
 
   def inspect
     <<~INSP
-     <Record: srcs=\"#{@srcs}\"
-              needs=#{@needs}>
+     <Record: srcs =#{@srcs}
+              needs=#{@needs} >
     INSP
               # => #{haves}
   end
@@ -233,7 +289,7 @@ end
 # Record.new('.', '').expect_solution(1)
 
 # # Simple, undamaged cases:
-Record.new('#', '1').expect_solution(1)
+# Record.new('#', '1').expect_solution(1)
 # Record.new('.#', '1').expect_solution(1)
 # Record.new('...#...', '1').expect_solution(1)
 # Record.new('#.', '1').expect_solution(1)
@@ -246,20 +302,27 @@ Record.new('#', '1').expect_solution(1)
 # Record.new('#..##', '1,3').expect_solution(0)
 # Record.new('#..##...#..###...', '1,2,1,3').expect_solution(1)
 
-# with damated records:
-Record.new('?', '1').expect_solution(1)
-Record.new('#?', '1').expect_solution(1)
-Record.new('?#', '1').expect_solution(1)
-Record.new('#?', '2').expect_solution(1)
-
-# Record.new('#.##', '1,2').expect_solution(1)
-
-# Record.new('.###', '2').expect_solution(0)
+# # with damaged records:
 # Record.new('?', '1').expect_solution(1)
-# Record.new('.##?', '3').expect_solution(1)
-# Record.new('.???', '2').expect_solution(2)
-# Record.new('#.##', '1,2').expect_solution(1)
+# Record.new('???', '1').expect_solution(3)
+# Record.new('#?', '1').expect_solution(1)
+# Record.new('?#', '1').expect_solution(1)
+# Record.new('?##', '3').expect_solution(1)
+# Record.new('#?', '2').expect_solution(1)
+# Record.new('.##?...', '3').expect_solution(1)
 
+# Record.new('.???', '2').expect_solution(2)
+# Record.new('.???.', '1').expect_solution(3)
+# Record.new('#??', '1,1').expect_solution(1)
+# Record.new('???', '1,1').expect_solution(1)
+# Record.new('.?.?.', '1,1').expect_solution(1)
+# Record.new('.??.?.', '1,1').expect_solution(2)
+# Record.new('.?.??.', '1,1').expect_solution(2)
+Record.new('???.???', '1,2').expect_solution(6)
+
+
+Record.new('???', '1,1').expect_solution(1)
+Record.new('?###????????', '3,2,1').expect_solution(10)
 
 
 
