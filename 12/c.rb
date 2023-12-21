@@ -1,25 +1,32 @@
 
+@possible_counts = {}
 
 # Returns the number of solutions to the input
 # pattern and word_needs, remains the same throughout.
-# str builds up to the same length as pattern,
-# and remaining_needs gets reduced through successive calls.
-def solutions(pattern, word_needs, str = '', remaining_needs = word_needs)
-  puts "solutions('#{pattern}', #{word_needs}, '#{str}', #{remaining_needs})"
+# str builds up to the same length as pattern
+def solutions(pattern, word_needs, str = '', possible_counts = {})
+  # puts "solutions('#{pattern}', #{word_needs}, '#{str}')"
 
-  action = check_solution(pattern, word_needs, str, remaining_needs)
-  # puts "    check_solution() returned '#{action}'"
+  if str = ''
+    total_need = word_needs.sum
+    total_skip = pattern.length - total_need
+    @possible_counts = {}
+  end
+
+  action = check_solution(pattern, word_needs, str, total_need, total_skip, possible_counts)
+  # puts "    check_solution returned '#{action}'"
 
   case action
   when :GO_ON
     # puts "   GO_ON: #{str}"
-    poss =  find_next_strings(pattern, str, remaining_needs)
-    return poss.sum do |longer_str, remaining_needs|
-      solutions(pattern, word_needs, longer_str, remaining_needs)
+    poss =  find_next_strings_greedy(pattern, str)
+    # puts "  possibilities: #{poss}"
+    return poss.sum do |longer_str|
+      solutions(pattern, word_needs, longer_str, possible_counts)
         # .tap  {|n| puts "      found #{n} sub-solutions"}
     end
   when :COMPLETE
-    # puts "COMPLETE: #{str}"
+    # puts "       >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>> COMPLETE: #{str}"
     return 1
   else
     # puts "    HALT: #{str} (#{action})"
@@ -32,7 +39,7 @@ end
 # Returns COMPLETE if this is a completely correct end solution.
 # Returns any other code to indicate why this str is not viable.
 # word_needs is the *entire* needs, not just remaining.
-def check_solution(pattern, word_needs, str, remaining_needs)
+def check_solution(pattern, word_needs, str, total_need, total_skip, possible_counts)
   # puts "    check_solution('#{pattern}', word_needs, '#{str}')"
   return :TOO_LONG     if str.size > pattern.size
 
@@ -44,7 +51,9 @@ def check_solution(pattern, word_needs, str, remaining_needs)
 
   return :BAD_PATTERN  if !pattern_match?(pattern, str)
 
-  need_stat = check_needs(word_needs, str, remaining_needs, str.size == pattern.size)
+  return :FAILED_NEEDS if remainder_impossible?(pattern, word_needs, str, total_need, total_skip, possible_counts)
+
+  need_stat = check_needs(word_needs, str, str.size == pattern.size)
   # puts "      need_stat=#{need_stat}"
   return :FAILED_NEEDS if need_stat == :FAILED_NEEDS
   return :COMPLETE     if need_stat == :COMPLETE && str.size == pattern.size
@@ -64,20 +73,92 @@ end
 # Only checks through str. string may become invalid when it grows longer.
 def pattern_match?(pattern, str)
   str.chars.zip(pattern.chars).all? do |s, p|
-    # puts "patern_match(#{p}, #{s})"
+    # puts "pattern_match(#{p}, #{s})"
     p == s || p=='?'
   end
 end
 
+def remainder_impossible?(pattern, word_needs, str, total_need, total_skip, possible_counts)
+  puts "remainder_impossible?('pattern', word_needs, '#{str}')"
+
+
+  so_far_word = str.count '#'
+  so_far_skip = str.length - so_far_word
+
+
+  cursor = str.length
+  # puts "  cursor  is #{cursor}"
+
+  if cursor == 0
+    rest = pattern
+  else
+    rest = pattern[cursor..]
+    # puts "    used  is '#{used}'"
+  end
+
+  could_add  = possible_count(rest, ['#','?'], possible_counts)
+  could_skip = possible_count(rest, ['.','?'], possible_counts)
+  # could_add  = rest.count('#') + rest.count('?')
+  # could_skip = rest.count('.') + rest.count('?')
+
+  puts "  need:#{total_need} have:#{so_far_word} could_add:#{could_add} could_skip:#{could_skip}"
+
+  if total_need > so_far_word + could_add
+    puts "     remainder is IMPOSSIBLE. Not enough words. STOP"
+    return true
+  end
+
+  if total_skip > so_far_skip + could_skip
+    puts "     remainder is IMPOSSIBLE. Not enough blanks. STOP"
+    return true
+  end
+
+  puts "     remainder is possible. KEEP GOING"
+  return false
+    # .tap { |too_hard| puts too_hard ? ' ------ IMPOSSIBLE -------' :  ' >>>>>>>> KEEP GOING ------'}
+end
+
+def possible_count(substr, chars, possible_counts)
+  puts "    possible_count(#{substr}, #{chars})"
+  puts "      hash: #{possible_counts}"
+  key = "#{substr}~#{chars}"
+  if !@possible_counts[key]
+    puts "      NOT CHACHED...COMPUTE:"
+    @possible_counts[key] = chars.map{ |c| substr.count(c)}.sum
+  end
+
+  puts "      hash: #{possible_counts}"
+
+  puts "      possible_count is #{@possible_counts[key]}"
+  return @possible_counts[key]
+end
+
 # Only checks all of current str. string may become invalid when it grows longer.
 # if exact_match, then the needs must be exact_match, exactly met.
-def check_needs(word_needs, str, remaining_needs, exact_match)
-  # puts "check_needs?(#{word_needs}, '#{str}', #{remaining_needs}, #{exact_match})"
+def check_needs(word_needs, str, exact_match)
+  # puts "check_needs?(#{word_needs}, '#{str}', #{exact_match})"
   # binding.pry
 
   word_lengths = str.split('.').map(&:length).select(&:positive?)
 
-  # puts "    // word_lengths=#{word_lengths} word_needs:#{word_needs} remaining_needs:#{remaining_needs}"
+  if exact_match
+    # puts "  COMPLETE? word_lengths=#{word_lengths} word_needs:#{word_needs}"
+
+    return :COMPLETE if word_lengths == word_needs
+    return :FAILED_NEEDS if word_lengths.length != word_needs.length
+
+    expecations = [word_needs].zip(word_lengths)
+    if expecations.any? { |have, expected|
+                          # puts "  (have)#{have} != #{expected}(expected)"
+                          have != expected
+                        }
+      return :FAILED_NEEDS
+    else
+      return :COMPLETE
+    end
+  end
+
+  # puts "    // word_lengths=#{word_lengths} word_needs:#{word_needs}"
   # puts "  GO_ON? (!exact_match)"
   return :GO_ON if word_lengths.empty? && !exact_match
 
@@ -95,7 +176,6 @@ def check_needs(word_needs, str, remaining_needs, exact_match)
   end
 
   # puts "  complete?"
-  return :COMPLETE if exact_match && remaining_needs == [0]
   # return :COMPLETE if exact_match && word_lengths == word_needs
 
   # puts "  FAILED_NEEDS? (exact)"
@@ -119,96 +199,68 @@ def check_needs(word_needs, str, remaining_needs, exact_match)
   return :GO_ON
 end
 
+
+
+
 # Returns an array of possible next steps.
-# Steps are each an array: [longer_str, remaining_needs].
+# Steps are each an array: [longer_str].
 #   longer_str is a new array, exactly one char longer than dst.
-#   remaining_needs is a new array, copied from remaining_needs and adjusted as needed. (e.g. first-- or first.delete)
 # Pays no regard to pattern at all.
 # New strings may be too long, too short, or invalid against pattern.
 # If dst ends in "#"", and need_counds starts with zero,
 #   then a new word is started ("." addedd), and the zero in need_counds is removed.
-def find_next_strings(pattern, current_string, remaining_needs)
-  # puts "find_next_strings('pattern', '#{current_string}', #{remaining_needs})"
-  possibilities = []
+def find_next_strings_greedy(pattern, current_string)
+  # puts "find_next_strings_greedy('pattern', '#{current_string}')"
+
   cursor = current_string.length
 
-  final_char = current_string[cursor - 1]
-  next_char = pattern[cursor]
-  current_need = remaining_needs[0]
-
-  next_chunk = ''
-  puts "TODO: pass in pattern, and gobble up all static chars."
-  puts "TODO: memoize past partials?"
-
-  while next_char != '?' do
-    next_chunk << next_char
-    cursor += 1
-  end
-
-  if !next_chunk.empty?
-    possibilities << [ current_string + '#', next_chunk]
-  end
-  # puts " // final_char=#{final_char}(#{final_char.class}) current_need=#{current_need} "
-  # puts " // final_char.nil?=#{final_char.nil?}"
-  # binding.pry
-
-  if (final_char == '#' &&  current_need.zero?)
-    # puts "  ++ End of a word. Insert separator, leave 0 in front of remaining_needs"
-    possibilities << [ current_string + '.', remaining_needs.dup]
-
-  elsif (final_char == '#' && current_need.positive?)
-    # puts "  ++ Continue word. Add word char, decrement current remaining_needs"
-    new_needs = remaining_needs.dup
-    new_needs[0] -= 1
-    possibilities << [ current_string + '#', new_needs]
-
-  # elsif (final_char == '#' && current_need.empty?)
-    # puts "  ++ Successful solution (trailing #): '#{current_string}'"
-
-
-  elsif (final_char == '.' &&  current_need.zero?)
-    # puts "  ++ Between words. 1) Add separator, and..."
-    possibilities << [ current_string + '.', remaining_needs.dup]
-
-    new_needs = remaining_needs.dup[1..]
-    if new_needs.any?
-      # puts "  ++ Between words. 2) ...and, Start new word"
-      new_needs[0] -= 1  # Account for new "#" added.
-      possibilities << [ current_string + '#', new_needs]
-    end
-
-  elsif (final_char == '.' && current_need.positive?)
-    # puts "  // Between words and more words needed. (probably the first word in str) Try both:"
-    # puts "  ++ Between words. 1) Add separator, and..."
-    possibilities << [ current_string + '.', remaining_needs.dup]
-
-    # puts "  ++ Between words. 2) ...and, Start new word"
-    new_needs = remaining_needs.dup
-    new_needs[0] -= 1  # Account for new "#" added.
-    possibilities << [ current_string + '#', new_needs]
-
-  # elsif (final_char == '.' && current_need.empty?)
-    # puts "  ++ Successful solution (trailing .): '#{current_string}'"
-
-
-  elsif (final_char.nil?)
-    # puts "  ++ Start of string. Try both:"
-
-    # puts "  ++ Start of string. 1) Add separator, and..."
-    possibilities << [ current_string + '.', remaining_needs.dup]
-
-    # puts "  ++ Start of string. 2) ...and, Start new word"
-    new_needs = remaining_needs.dup # Don't remove first word!
-    new_needs[0] -= 1  # Account for new "#" added.
-    possibilities << [ current_string + '#', new_needs]
-
+  if pattern[cursor] == '?'
+    return find_dynamic_possibilities(pattern, current_string)
   else
-    raise "  ?? Huh. Nothing happened???"
+    return find_static_possibilities(pattern, current_string)
+  end
+end
+
+
+def find_static_possibilities(pattern, current_string)
+  # puts "find_static_possibilities('pattern', '#{current_string}')"
+
+  # puts " pattern  is '#{pattern}'"
+
+  cursor = current_string.length
+  # puts "  cursor  is #{cursor}"
+
+  if cursor == 0
+    rest = pattern
+  else
+    # used = pattern[..cursor-1]
+    rest = pattern[cursor..]
+
+    # puts "    used  is '#{used}'"
   end
 
-  # puts "  => Possibilities: #{possibilities}"
-  possibilities
+  # puts "    rest  is '#{rest}'"
+  if (stop = rest.index('?'))
+    # puts "    stop  is '#{stop}'"
+    chunk = rest[..stop-1]
+    # puts "    chunk is '#{chunk}'"
+
+    return [current_string + chunk]
+  else
+    return [current_string + rest]
+
+  end
 end
+
+def find_dynamic_possibilities(pattern, current_string)
+  # puts "find_dynamic_possibilities('pattern', '#{current_string}')"
+
+  [
+    current_string + '#',
+    current_string + '.'
+  ]
+end
+
 
 
 
@@ -298,7 +350,7 @@ class Board
   end
 
   def solutions
-    puts @records
+    # puts @records
 
     @records.sum do |rec|
       rec.solve
